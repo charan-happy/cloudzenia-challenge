@@ -54,6 +54,11 @@ module "observability" {
   rds_instance_id    = module.rds.rds_instance_id
 }
 
+module "s3" {
+  source         = "./modules/s3"
+  hosted_zone_id = var.hosted_zone_id
+}
+
 module "budget" {
   source = "./modules/budget"
 }
