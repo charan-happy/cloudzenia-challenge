@@ -2,6 +2,15 @@ provider "aws" {
   region = "ap-south-1"
 }
 
+terraform {
+  backend "s3" {
+    bucket         = "cloudzenia-terraform-state"
+    key            = "cloudzenia/terraform.tfstate"
+    region         = "ap-south-1"
+    dynamodb_table = "cloudzenia-terraform-locks"
+  }
+}
+
 module "vpc" {
   source    = "./modules/vpc"
   alb_sg_id = module.alb.alb_sg_id

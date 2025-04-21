@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "static_site" {
-  bucket = "cloudzenia-static-site-${random_string.suffix.result}"
+  bucket = "cloudzenia-static-site-${lower(random_string.suffix.result)}"
 }
 
 resource "aws_s3_bucket_website_configuration" "static_site" {
@@ -50,9 +50,5 @@ resource "aws_route53_record" "static_site" {
 resource "random_string" "suffix" {
   length  = 8
   special = false
-}
-
-variable "hosted_zone_id" {
-  description = "Route 53 Hosted Zone ID"
-  type        = string
+  upper   = false # Ensure no uppercase characters
 }

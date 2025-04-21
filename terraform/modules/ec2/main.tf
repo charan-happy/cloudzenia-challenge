@@ -86,7 +86,7 @@ resource "aws_cloudwatch_metric_alarm" "ram" {
   }
 }
 
- CloudWatch Alarm for EC2 CPU Utilization
+# CloudWatch Alarm for EC2 CPU Utilization
 resource "aws_cloudwatch_metric_alarm" "ec2_cpu" {
   count               = 2
   alarm_name          = "ec2-${count.index + 1}-high-cpu"
