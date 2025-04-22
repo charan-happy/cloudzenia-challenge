@@ -19,6 +19,20 @@ jobs:
           ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
           aws-region: ${{ secrets.AWS_REGION }}
       
+      - name: Check and Delete Secrets Manager Secret
+        run: |
+               SECRET_NAME="wordpress-db-password"
+               if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ap-south-1 2>/dev/null; then
+                 echo "Secret $SECRET_NAME exists, checking deletion status..."
+                 if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ap-south-1 | grep -q '"DeletedDate"'; then
+                   echo "Secret is scheduled for deletion, force deleting..."
+                   aws secretsmanager delete-secret --secret-id $SECRET_NAME --force-delete-without-recovery --region ap-south-1
+                   echo "Secret $SECRET_NAME force deleted."
+                 fi
+               else
+                 echo "Secret $SECRET_NAME does not exist, proceeding."
+               fi
+      
       - name: Setup Terraform  
         uses: hashicorp/setup-terraform@v2  
         with:  
@@ -42,6 +56,8 @@ jobs:
           AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+          TF_VAR_hosted_zone_id: ${{ secrets.TF_VAR_hosted_zone_id }}
+          TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
 
       - name: Terraform Apply
         run: cd terraform && terraform apply --auto-approve
@@ -50,6 +66,8 @@ jobs:
           AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+          TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
+          TF_VAR_hosted_zone_id: ${{ secrets.TF_VAR_hosted_zone_id }}
 
       - name: Login to Amazon ECR  
         uses: aws-actions/amazon-ecr-login@v1  
