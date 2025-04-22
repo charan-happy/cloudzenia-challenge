@@ -1,7 +1,7 @@
 resource "aws_instance" "main" {
   count         = 2
-  ami           = "ami-0c55b159cbfafe1f0" # Amazon Linux 2
-  instance_type = "t3.micro"
+  ami           = "ami-0f1dcc636b69a6438" # Amazon Linux 2
+  instance_type = "t2.micro"
   subnet_id     = var.private_subnets[count.index]
   vpc_security_group_ids = [aws_security_group.ec2.id]
   user_data = <<-EOF
@@ -84,4 +84,40 @@ resource "aws_cloudwatch_metric_alarm" "ram" {
   dimensions = {
     InstanceId = aws_instance.main[count.index].id
   }
+}
+
+# CloudWatch Alarm for EC2 CPU Utilization
+resource "aws_cloudwatch_metric_alarm" "ec2_cpu" {
+  count               = 2
+  alarm_name          = "ec2-${count.index + 1}-high-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Alarm when EC2 instance ${count.index + 1} CPU exceeds 80%"
+  dimensions = {
+    InstanceId = aws_instance.main[count.index].id
+  }
+  alarm_actions = []
+}
+
+# CloudWatch Alarm for EC2 Memory Utilization
+resource "aws_cloudwatch_metric_alarm" "ec2_memory" {
+  count               = 2
+  alarm_name          = "ec2-${count.index + 1}-high-memory"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Alarm when EC2 instance ${count.index + 1} memory exceeds 80%"
+  dimensions = {
+    InstanceId = aws_instance.main[count.index].id
+  }
+  alarm_actions = []
 }

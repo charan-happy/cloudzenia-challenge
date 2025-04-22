@@ -145,3 +145,43 @@ resource "aws_iam_role_policy" "ecs_task_secrets" {
     }]
   })
 }
+
+# CloudWatch Log Group for ECS Tasks
+resource "aws_cloudwatch_log_group" "ecs" {
+  name              = "/aws/ecs/cloudzenia"
+  retention_in_days = 7
+}
+
+# CloudWatch Alarm for ECS CPU Utilization
+resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
+  alarm_name          = "ecs-high-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Alarm when ECS CPU exceeds 80%"
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+  }
+  alarm_actions = [] # Add SNS topic ARN if needed
+}
+
+# CloudWatch Alarm for ECS Memory Utilization
+resource "aws_cloudwatch_metric_alarm" "ecs_memory" {
+  alarm_name          = "ecs-high-memory"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/ECS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Alarm when ECS memory exceeds 80%"
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+  }
+  alarm_actions = []
+}
