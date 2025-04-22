@@ -1,0 +1,12 @@
+# Terraform files
+.terraform
+terraform.tfstate
+terraform.tfstate.backup
+tfplan
+
+# logs
+*.logs
+
+# secrets
+*.tfvars
+*.env
