@@ -20,22 +20,6 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-resource "aws_lb_target_group" "ec2_instance" {
-  name     = "cloudzenia-ec2-instance-tg"
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = var.vpc_id
-  health_check {
-    path                = "/"
-    protocol            = "HTTP"
-    matcher             = "200"
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 3
-    unhealthy_threshold = 3
-  }
-}
-
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
   port              = 443
@@ -123,6 +107,15 @@ resource "aws_lb_target_group" "wordpress" {
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
 
 resource "aws_lb_target_group" "microservice" {
@@ -131,6 +124,15 @@ resource "aws_lb_target_group" "microservice" {
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
+  health_check {
+    path                = "/health" # Adjust if microservice has a specific health endpoint
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
 
 resource "aws_lb_target_group" "ec2_instance1" {
@@ -139,6 +141,15 @@ resource "aws_lb_target_group" "ec2_instance1" {
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
 
 resource "aws_lb_target_group" "ec2_docker1" {
@@ -147,6 +158,15 @@ resource "aws_lb_target_group" "ec2_docker1" {
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
 
 resource "aws_lb_target_group" "ec2_instance2" {
@@ -155,6 +175,15 @@ resource "aws_lb_target_group" "ec2_instance2" {
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
 
 resource "aws_lb_target_group" "ec2_docker2" {
@@ -163,6 +192,15 @@ resource "aws_lb_target_group" "ec2_docker2" {
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
 
 resource "aws_security_group" "alb" {
