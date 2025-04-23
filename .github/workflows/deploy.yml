@@ -56,14 +56,14 @@ jobs:
 
       - name: validate
         run: terraform validate && terraform plan
-        env: |
+        env: 
              AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
              AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
              aws-region: ${{ secrets.AWS_REGION }}
 
       - name : apply terraform file for s3 bucket creation
         run: terraform apply --auto-approve
-        env: |
+        env: 
             AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
             aws-region: ${{ secrets.AWS_REGION }}
