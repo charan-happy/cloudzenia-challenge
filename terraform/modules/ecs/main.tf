@@ -56,7 +56,7 @@ resource "aws_ecs_service" "wordpress" {
   }
   # Ensure service redeploys if task definition changes
 
-depends_on = [aws_iam_role_policy_attachment.ecs_execution]
+# depends_on = [aws_iam_role_policy_attachment.ecs_execution]
 }
 
 # task definition for microservice 
@@ -110,7 +110,7 @@ resource "aws_ecs_service" "microservice" {
     container_name   = "microservice"
     container_port   = 3000
   }
-  depends_on = [aws_iam_role_policy_attachment.ecs_execution]
+  # depends_on = [aws_iam_role_policy_attachment.ecs_execution]
 }
 
 # autoscaling for wordpress
