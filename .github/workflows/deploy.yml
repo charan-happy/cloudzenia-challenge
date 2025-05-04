@@ -28,6 +28,13 @@ jobs:
         with:
           terraform_version: latest
 
+      # Clear any existing local state to avoid conflicts
+      - name: Clear Existing Terraform State for Bootstrap
+        run: |
+          cd bootstrap
+          rm -rf .terraform terraform.tfstate terraform.tfstate.backup .terraform.lock.hcl || echo "No existing state files to clear"
+          echo "Cleared existing Terraform state files"
+          
       - name: Terraform Init for Bootstrap
         run: |
           cd bootstrap
@@ -80,6 +87,8 @@ jobs:
 
           # Refresh Terraform state to ensure consistency after imports
           terraform refresh || echo "Failed to refresh Terraform state, proceeding..."
+           # Sleep to ensure state changes propagate
+          sleep 5
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
 
