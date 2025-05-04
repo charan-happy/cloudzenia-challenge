@@ -11,6 +11,8 @@ jobs:
     steps:  
       - uses: actions/checkout@v3  
       
+      # configuring AWS credentials
+
       - name: Configure AWS Credentials  
         uses: aws-actions/configure-aws-credentials@v1  
         with:  
@@ -19,90 +21,138 @@ jobs:
           ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
           aws-region: ${{ secrets.AWS_REGION }}
       
-      - name: Check and Delete Secrets Manager Secret
-        run: |
-               SECRET_NAME="wordpress-db-password"
-               if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ap-south-1 2>/dev/null; then
-                 echo "Secret $SECRET_NAME exists, checking deletion status..."
-                 if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ap-south-1 | grep -q '"DeletedDate"'; then
-                   echo "Secret is scheduled for deletion, force deleting..."
-                   aws secretsmanager delete-secret --secret-id $SECRET_NAME --force-delete-without-recovery --region ap-south-1
-                   echo "Secret $SECRET_NAME force deleted."
-                 fi
-               else
-                 echo "Secret $SECRET_NAME does not exist, proceeding."
-               fi
+    
+      # Step 1: Bootstrap - Initialize and apply Terraform for S3 bucket and DynamoDB
+      - name: Setup Terraform for Bootstrap
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: latest
 
+      - name: Terraform Init for Bootstrap
+        run: |
+          cd bootstrap
+          terraform init
+
+      - name: Terraform Validate for Bootstrap
+        run: |
+          cd bootstrap
+          terraform validate
+
+      - name: Terraform Apply for Bootstrap (S3 and DynamoDB)
+        run: |
+          cd bootstrap
+          terraform apply --auto-approve
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+      # Step 2: Build and Push Microservice Image to ECR
       - name: Login to Amazon ECR  
         uses: aws-actions/amazon-ecr-login@v1  
-      
-      - name: Build, tag, and push image to Amazon ECR  
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+      - name: Build, tag, and push Microservice image to Amazon ECR  
         run: |  
           cd microservice  
           docker build -t microservice:latest .  
           docker tag microservice:latest ${{ secrets.ECR_REGISTRY }}/microservice:latest  
           docker push ${{ secrets.ECR_REGISTRY }}/microservice:latest  
-      
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+      # Step 3: check and manage Secrets Manager Secrets
+      - name: Check and Delete Secrets Manager Secret
+        run: |
+            SECRET_NAME="wordpress-db-password"
+            if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+              echo "Secret $SECRET_NAME exists, checking deletion status..."
+              if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} | grep -q '"DeletedDate"'; then
+              echo "Secret is scheduled for deletion, force deleting..."
+              aws secretsmanager delete-secret --secret-id $SECRET_NAME --force-delete-without-recovery --region ${{ secrets.AWS_REGION }}
+              echo "Secret $SECRET_NAME force deleted."
+              sleep 10  # Wait for deletion to propagate
+            fi
+            echo "Recreating secret $SECRET_NAME..."
+            aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }}
+            else
+              echo "Secret $SECRET_NAME does not exist, creating..."
+              aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }}
+            fi
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+     
+      # step 4: Setup terraform for Infrastructure
       - name: Setup Terraform  
         uses: hashicorp/setup-terraform@v2  
         with:  
           terraform_version: latest
-
-      - name: checking terraform version
-        run: terraform version
       
-      - name: boostrap
-        run : cd boostrap && terraform init
+      - name: Terraform Init for Infrastructure
+        run: |
+          cd terraform
+          terraform init
 
-      - name: validate
-        run: terraform validate && terraform plan
-        env: |
-             AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
-             AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-             aws-region: ${{ secrets.AWS_REGION }}
+      - name: Terraform Validate for Infrastructure
+        run: |
+          cd terraform
+          terraform validate
 
-      - name : apply terraform file for s3 bucket creation
-        run: terraform apply --auto-approve
-        env: |
-            AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
-            AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            aws-region: ${{ secrets.AWS_REGION }}
-
-
-      - name: Terraform init  
-        run: cd terraform && terraform init
-
-      - name: Terraform Validate
-        run: cd terraform && terraform validate
-
-      - name: Terraform plan
+      - name: Terraform Plan for Infrastructure
         id: plan
         run: |
-          cd terraform && terraform plan -no-color -input=false -out=tfplan
+          cd terraform
+          terraform plan -no-color -input=false -out=tfplan
           echo "changes=$(terraform show -no-color tfplan | grep -q 'No changes.' && echo 'false' || echo 'true')" >> $GITHUB_OUTPUT
         env:
-          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
           TF_VAR_hosted_zone_id: ${{ secrets.TF_VAR_hosted_zone_id }}
           TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
-
-      - name: Terraform refresh
-        run: terraform refresh
-
-      - name: Terraform Apply
-        run: cd terraform && terraform apply --auto-approve
+      
+      - name: Terraform Apply for Infrastructure
+        id: apply
         if: steps.plan.outputs.changes == 'true'
+        run: |
+          cd terraform
+          terraform apply -no-color -input=false -auto-approve
+          # Capture output variables for URLs
+          echo "wordpress_url=$(terraform output -raw wordpress_url)" >> $GITHUB_OUTPUT
+          echo "microservice_url=$(terraform output -raw microservice_url)" >> $GITHUB_OUTPUT
+          echo "docs_url=$(terraform output -raw docs_url)" >> $GITHUB_OUTPUT
+          echo "ec2_instance1_url=$(terraform output -raw ec2_instance1_url)" >> $GITHUB_OUTPUT
         env:
-          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
           TF_VAR_hosted_zone_id: ${{ secrets.TF_VAR_hosted_zone_id }}
+          TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
 
-      - name: Deploy to ECS  
-        run: |  
-          aws ecs update-service --cluster cloudzenia-ecs --service microservice-service --force-new-deployment  
-        env:  
+
+      # Step 5: Upload Docs to S3 Bucket
+      - name: Get S3 Bucket Name
+        id: get-s3-bucket
+        run: |
+         cd terraform
+         echo "bucket_name=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
+      - name: Upload Docs to S3
+        run: |
+          aws s3 sync ./docs/ s3://${{ steps.get-s3-bucket.outputs.bucket_name }}/ --region ${{ secrets.AWS_REGION }}
+
+      # Step 6: Force ECS Service Deployment
+      - name: Deploy to ECS (WordPress Service)
+        run: |
+          aws ecs update-service --cluster cloudzenia-ecs --service wordpress-service --force-new-deployment --region ${{ secrets.AWS_REGION }}
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to ECS (Microservice Service)
+        run: |
+          aws ecs update-service --cluster cloudzenia-ecs --service microservice-service --force-new-deployment --region ${{ secrets.AWS_REGION }}
+        env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
       
+      # Step 7: Print Accessible URLs
+      - name: Print Accessible URLs
+        if: steps.plan.outputs.changes == 'true'
+        run: |
+          echo "WordPress URL: https://${{ steps.apply.outputs.wordpress_url }}"
+          echo "Microservice URL: https://${{ steps.apply.outputs.microservice_url }}"
+          echo "Docs URL: http://${{ steps.apply.outputs.docs_url }}"
+          echo "EC2 Instance 1 URL: https://${{ steps.apply.outputs.ec2_instance1_url }}"
