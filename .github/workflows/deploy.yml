@@ -42,6 +42,15 @@ jobs:
         run: |
           cd bootstrap
 
+           # Check and import S3 Bucket: cloudzenia-terraform-state
+          BUCKET_EXISTS=$(aws s3api head-bucket --bucket cloudzenia-terraform-state --region ${{ secrets.AWS_REGION }} 2>/dev/null && echo "true" || echo "false")
+          if [ "$BUCKET_EXISTS" = "true" ]; then
+            echo "S3 Bucket cloudzenia-terraform-state already exists"
+            terraform import aws_s3_bucket.terraform_state cloudzenia-terraform-state || echo "Failed to import S3 bucket, proceeding..."
+          else
+            echo "S3 Bucket cloudzenia-terraform-state does not exist, will create it."
+          fi
+          
           # Check and import IAM Policy: cloudzenia-s3-access
           POLICY_ARN_S3=$(aws iam list-policies --query "Policies[?PolicyName=='cloudzenia-s3-access'].Arn" --output text --region ${{ secrets.AWS_REGION }} 2>/dev/null || echo "")
           if [ -n "$POLICY_ARN_S3" ]; then
@@ -120,6 +129,7 @@ jobs:
         uses: hashicorp/setup-terraform@v2  
         with:  
           terraform_version: latest
+          terraform_wrapper: false  # Allows capturing outputs
       
       - name: Terraform Init for Infrastructure
         run: |
