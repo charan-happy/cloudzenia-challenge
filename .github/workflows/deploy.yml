@@ -183,6 +183,118 @@ jobs:
         run: |
           cd terraform
           terraform validate
+      
+      - name: Check and Import Existing Resources (Infrastructure)
+        run: |
+          cd terraform
+
+          # Get AWS Account ID
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          # Check and import ELBv2 Target Groups
+          for TG in wordpress-tg microservice-tg ec2-instance1-tg ec2-docker1-tg ec2-instance2-tg ec2-docker2-tg; do
+            TG_ARN=$(aws elbv2 describe-target-groups --names $TG --region ${{ secrets.AWS_REGION }} --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
+            if [ -n "$TG_ARN" ]; then
+              echo "Target Group $TG already exists with ARN: $TG_ARN"
+              case $TG in
+                wordpress-tg)
+                  terraform import module.alb.aws_lb_target_group.wordpress $TG_ARN || echo "Failed to import Target Group $TG, proceeding..."
+                  ;;
+                microservice-tg)
+                  terraform import module.alb.aws_lb_target_group.microservice $TG_ARN || echo "Failed to import Target Group $TG, proceeding..."
+                  ;;
+                ec2-instance1-tg)
+                  terraform import module.alb.aws_lb_target_group.ec2_instance1 $TG_ARN || echo "Failed to import Target Group $TG, proceeding..."
+                  ;;
+                ec2-docker1-tg)
+                  terraform import module.alb.aws_lb_target_group.ec2_docker1 $TG_ARN || echo "Failed to import Target Group $TG, proceeding..."
+                  ;;
+                ec2-instance2-tg)
+                  terraform import module.alb.aws_lb_target_group.ec2_instance2 $TG_ARN || echo "Failed to import Target Group $TG, proceeding..."
+                  ;;
+                ec2-docker2-tg)
+                  terraform import module.alb.aws_lb_target_group.ec2_docker2 $TG_ARN || echo "Failed to import Target Group $TG, proceeding..."
+                  ;;
+              esac
+            else
+              echo "Target Group $TG does not exist, will create it."
+            fi
+          done
+
+          # Check and import AWS Budget
+          BUDGET_EXISTS=$(aws budgets describe-budget --account-id $ACCOUNT_ID --budget-name cloudzenia-budget --region ${{ secrets.AWS_REGION }} --query "Budget.BudgetName" --output text 2>/dev/null || echo "")
+          if [ -n "$BUDGET_EXISTS" ]; then
+            echo "Budget cloudzenia-budget already exists"
+            terraform import module.budget.aws_budgets_budget.main $ACCOUNT_ID:cloudzenia-budget || echo "Failed to import Budget, proceeding..."
+          else
+            echo "Budget cloudzenia-budget does not exist, will create it."
+          fi
+
+          # Check and import IAM Roles
+          if aws iam get-role --role-name ecs_execution_role --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+            echo "IAM Role ecs_execution_role already exists"
+            terraform import module.ecs.aws_iam_role.ecs_execution ecs_execution_role || echo "Failed to import IAM Role ecs_execution_role, proceeding..."
+          else
+            echo "IAM Role ecs_execution_role does not exist, will create it."
+          fi
+
+          if aws iam get-role --role-name ecs_task_role --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+            echo "IAM Role ecs_task_role already exists"
+            terraform import module.ecs.aws_iam_role.ecs_task ecs_task_role || echo "Failed to import IAM Role ecs_task_role, proceeding..."
+          else
+            echo "IAM Role ecs_task_role does not exist, will create it."
+          fi
+
+          # Check and import CloudWatch Log Group
+          if aws logs describe-log-groups --log-group-name-prefix /aws/ecs/cloudzenia --region ${{ secrets.AWS_REGION }} --query "logGroups[?logGroupName=='/aws/ecs/cloudzenia'].logGroupName" --output text 2>/dev/null; then
+            echo "CloudWatch Log Group /aws/ecs/cloudzenia already exists"
+            terraform import module.ecs.aws_cloudwatch_log_group.ecs /aws/ecs/cloudzenia || echo "Failed to import CloudWatch Log Group, proceeding..."
+          else
+            echo "CloudWatch Log Group /aws/ecs/cloudzenia does not exist, will create it."
+          fi
+
+          # Check and import RDS DB Subnet Group
+          if aws rds describe-db-subnet-groups --db-subnet-group-name wordpress-db-subnet-group --region ${{ secrets.AWS_REGION }} --query "DBSubnetGroups[0].DBSubnetGroupName" --output text 2>/dev/null; then
+            echo "RDS DB Subnet Group wordpress-db-subnet-group already exists"
+            terraform import module.rds.aws_db_subnet_group.main wordpress-db-subnet-group || echo "Failed to import RDS DB Subnet Group, proceeding..."
+          else
+            echo "RDS DB Subnet Group wordpress-db-subnet-group does not exist, will create it."
+          fi
+
+          # Check and import Secrets Manager Secret
+          SECRET_ARN=$(aws secretsmanager describe-secret --secret-id wordpress-db-password --region ${{ secrets.AWS_REGION }} --query "ARN" --output text 2>/dev/null || echo "")
+          if [ -n "$SECRET_ARN" ]; then
+            echo "Secrets Manager Secret wordpress-db-password already exists with ARN: $SECRET_ARN"
+            terraform import module.secrets_manager.aws_secretsmanager_secret.db_password $SECRET_ARN || echo "Failed to import Secrets Manager Secret, proceeding..."
+          else
+            echo "Secrets Manager Secret wordpress-db-password does not exist, will create it."
+          fi
+
+          # Sleep to ensure state changes propagate
+          sleep 5
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+      
+      # Step : Verify and Refresh Terraform State (Infrastructure)
+      - name: Verify and Refresh Terraform State (Infrastructure)
+        run: |
+          cd terraform
+
+          # Verify if Secrets Manager Secret is in the state (as an example, can add checks for others)
+          if terraform state list | grep -q "module.secrets_manager.aws_secretsmanager_secret.db_password"; then
+            echo "Secrets Manager Secret wordpress-db-password is in the Terraform state"
+          else
+            echo "Secrets Manager Secret wordpress-db-password is NOT in the Terraform state, attempting re-import..."
+            SECRET_ARN=$(aws secretsmanager describe-secret --secret-id wordpress-db-password --region ${{ secrets.AWS_REGION }} --query "ARN" --output text 2>/dev/null || echo "")
+            if [ -n "$SECRET_ARN" ]; then
+              terraform import module.secrets_manager.aws_secretsmanager_secret.db_password $SECRET_ARN || echo "Failed to re-import Secrets Manager Secret, proceeding..."
+            fi
+          fi
+
+          # Refresh Terraform state to ensure consistency
+          terraform refresh || echo "Failed to refresh Terraform state, proceeding..."
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
           
       - name: Terraform Plan for Infrastructure
         id: plan
