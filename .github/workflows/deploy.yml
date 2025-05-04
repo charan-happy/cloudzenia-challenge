@@ -130,23 +130,28 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
 
       # Step 3: check and manage Secrets Manager Secrets
-      - name: Check and Delete Secrets Manager Secret
+      - name: Check and Manage Secrets Manager Secret
         run: |
-            SECRET_NAME="wordpress-db-password"
-            if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
-              echo "Secret $SECRET_NAME exists, checking deletion status..."
-              if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} | grep -q '"DeletedDate"'; then
+          SECRET_NAME="wordpress-db-password"
+          if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+            echo "Secret $SECRET_NAME exists, checking deletion status..."
+            if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} | grep -q '"DeletedDate"'; then
               echo "Secret is scheduled for deletion, force deleting..."
               aws secretsmanager delete-secret --secret-id $SECRET_NAME --force-delete-without-recovery --region ${{ secrets.AWS_REGION }}
               echo "Secret $SECRET_NAME force deleted."
               sleep 10  # Wait for deletion to propagate
+            else
+              echo "Secret is not scheduled for deletion, deleting now..."
+              aws secretsmanager delete-secret --secret-id $SECRET_NAME --force-delete-without-recovery --region ${{ secrets.AWS_REGION }}
+              echo "Secret $SECRET_NAME deleted."
+              sleep 10  # Wait for deletion to propagate
             fi
             echo "Recreating secret $SECRET_NAME..."
             aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }}
-            else
-              echo "Secret $SECRET_NAME does not exist, creating..."
-              aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }}
-            fi
+          else
+            echo "Secret $SECRET_NAME does not exist, creating..."
+            aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }}
+          fi
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
      
