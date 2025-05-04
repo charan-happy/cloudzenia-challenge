@@ -105,21 +105,6 @@ Upload S3 content:aws s3 sync ./docs/ s3://cloudzenia-static-site-vh6xuuwz/
 Push microservice to ECR via GitHub Actions.
 Verify endpoints and observability.
 
-**Notes**
-
-Resolved dependency cycle between ECS and RDS.
-Fixed ALB outputs, db_password, EC2 EIP, Secrets Manager outputs.
-Corrected terraform.tfvars syntax.
-Implemented observability with CloudWatch alarms, dashboard, and logs.
-Automated microservice and infrastructure deployment with GitHub Actions.
-Configured S3 static hosting and AWS Budget.
-Added Terraform state backend with S3 and DynamoDB.
-Fixed S3 bucket name error by using lowercase random suffix.
-Resolved Secrets Manager error by force-deleting wordpress-db-password in deploy.yml.
-Fixed hosted_zone_id error by setting correct Route 53 ID (Z05135773VBNXAZ3YSQ5W).
-Fixed RDS password error by ensuring db_password >=8 characters.
-Fixed docs.nagacharan.site by reapplying Terraform to create Route 53 A record aliased to S3 website endpoint (cloudzenia-static-site-vh6xuuwz.s3-website.ap-south-1.amazonaws.com).
-Pending: Resolve 503 error across ALB endpoints (health checks, ECS/EC2 services).
 
 ## Cost Management
 
