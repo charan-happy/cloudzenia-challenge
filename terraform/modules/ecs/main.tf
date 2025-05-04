@@ -54,11 +54,10 @@ resource "aws_ecs_service" "wordpress" {
     container_name   = "wordpress"
     container_port   = 80
   }
-}
-
-# Ensure service redeploys if task definition changes
+  # Ensure service redeploys if task definition changes
 
 depends_on = [aws_iam_role_policy_attachment.ecs_execution]
+}
 
 # task definition for microservice 
 
