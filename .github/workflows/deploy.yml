@@ -85,13 +85,27 @@ jobs:
             echo "DynamoDB Table cloudzenia-terraform-locks does not exist, will create it."
           fi
 
-          # Refresh Terraform state to ensure consistency after imports
-          terraform refresh || echo "Failed to refresh Terraform state, proceeding..."
-           # Sleep to ensure state changes propagate
           sleep 5
+        # Sleep to ensure state changes propagate
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
+      - name: Verify and Refresh Terraform State
+        run: |
+          cd bootstrap
 
+          # Verify if S3 bucket is in the state
+          if terraform state list | grep -q "aws_s3_bucket.terraform_state"; then
+            echo "S3 Bucket cloudzenia-terraform-state is in the Terraform state"
+          else
+            echo "S3 Bucket cloudzenia-terraform-state is NOT in the Terraform state, attempting re-import..."
+            terraform import aws_s3_bucket.terraform_state cloudzenia-terraform-state || echo "Failed to re-import S3 bucket, proceeding anyway as bucket exists..."
+          fi
+
+          # Refresh Terraform state to ensure consistency
+          terraform refresh || echo "Failed to refresh Terraform state, proceeding..."
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          
 
       - name: Terraform Apply for Bootstrap (S3 and DynamoDB)
         run: |
