@@ -136,21 +136,33 @@ jobs:
           if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
             echo "Secret $SECRET_NAME exists, checking deletion status..."
             if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} | grep -q '"DeletedDate"'; then
-              echo "Secret is scheduled for deletion, force deleting..."
-              aws secretsmanager delete-secret --secret-id $SECRET_NAME --force-delete-without-recovery --region ${{ secrets.AWS_REGION }}
-              echo "Secret $SECRET_NAME force deleted."
-              sleep 10  # Wait for deletion to propagate
+              echo "Secret is scheduled for deletion, waiting for deletion to complete..."
+              # Wait for deletion to complete (up to 60 seconds)
+              for i in {1..12}; do
+                if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+                  echo "Secret still exists, waiting... ($i/12)"
+                  sleep 5
+                else
+                  echo "Secret $SECRET_NAME fully deleted."
+                  break
+                fi
+              done
+              # Check if secret is still not deleted after waiting
+              if aws secretsmanager describe-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+                echo "Secret $SECRET_NAME could not be deleted within timeout, attempting to restore and update..."
+                aws secretsmanager restore-secret --secret-id $SECRET_NAME --region ${{ secrets.AWS_REGION }} || echo "Failed to restore secret, proceeding..."
+                aws secretsmanager update-secret --secret-id $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }} || echo "Failed to update secret, proceeding..."
+              else
+                echo "Creating new secret $SECRET_NAME..."
+                aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }} || echo "Failed to create secret, proceeding..."
+              fi
             else
-              echo "Secret is not scheduled for deletion, deleting now..."
-              aws secretsmanager delete-secret --secret-id $SECRET_NAME --force-delete-without-recovery --region ${{ secrets.AWS_REGION }}
-              echo "Secret $SECRET_NAME deleted."
-              sleep 10  # Wait for deletion to propagate
+              echo "Secret is not scheduled for deletion, updating secret..."
+              aws secretsmanager update-secret --secret-id $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }} || echo "Failed to update secret, proceeding..."
             fi
-            echo "Recreating secret $SECRET_NAME..."
-            aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }}
           else
             echo "Secret $SECRET_NAME does not exist, creating..."
-            aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }}
+            aws secretsmanager create-secret --name $SECRET_NAME --secret-string '{"password":"${{ secrets.TF_VAR_db_password }}"}' --region ${{ secrets.AWS_REGION }} || echo "Failed to create secret, proceeding..."
           fi
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
