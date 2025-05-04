@@ -38,6 +38,40 @@ jobs:
           cd bootstrap
           terraform validate
 
+      - name: Check and Import Existing Resources
+        run: |
+          cd bootstrap
+
+          # Check and import IAM Policy: cloudzenia-s3-access
+          POLICY_ARN_S3=$(aws iam list-policies --query "Policies[?PolicyName=='cloudzenia-s3-access'].Arn" --output text --region ${{ secrets.AWS_REGION }} 2>/dev/null || echo "")
+          if [ -n "$POLICY_ARN_S3" ]; then
+            echo "IAM Policy cloudzenia-s3-access already exists with ARN: $POLICY_ARN_S3"
+            terraform import aws_iam_policy.s3_access $POLICY_ARN_S3 || echo "Failed to import IAM policy, proceeding..."
+          else
+            echo "IAM Policy cloudzenia-s3-access does not exist, will create it."
+          fi
+
+          # Check and import IAM Policy: cloudzenia-terraform-state-access
+          POLICY_ARN_STATE=$(aws iam list-policies --query "Policies[?PolicyName=='cloudzenia-terraform-state-access'].Arn" --output text --region ${{ secrets.AWS_REGION }} 2>/dev/null || echo "")
+          if [ -n "$POLICY_ARN_STATE" ]; then
+            echo "IAM Policy cloudzenia-terraform-state-access already exists with ARN: $POLICY_ARN_STATE"
+            terraform import aws_iam_policy.terraform_state $POLICY_ARN_STATE || echo "Failed to import IAM policy, proceeding..."
+          else
+            echo "IAM Policy cloudzenia-terraform-state-access does not exist, will create it."
+          fi
+
+          # Check and import DynamoDB Table: cloudzenia-terraform-locks
+          TABLE_EXISTS=$(aws dynamodb describe-table --table-name cloudzenia-terraform-locks --region ${{ secrets.AWS_REGION }} --query "Table.TableName" --output text 2>/dev/null || echo "")
+          if [ -n "$TABLE_EXISTS" ]; then
+            echo "DynamoDB Table cloudzenia-terraform-locks already exists"
+            terraform import aws_dynamodb_table.locks cloudzenia-terraform-locks || echo "Failed to import DynamoDB table, proceeding..."
+          else
+            echo "DynamoDB Table cloudzenia-terraform-locks does not exist, will create it."
+          fi
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+
       - name: Terraform Apply for Bootstrap (S3 and DynamoDB)
         run: |
           cd bootstrap
