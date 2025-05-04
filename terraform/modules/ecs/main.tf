@@ -2,6 +2,8 @@ resource "aws_ecs_cluster" "main" {
   name = "cloudzenia-ecs"
 }
 
+# task definition for ecs
+
 resource "aws_ecs_task_definition" "wordpress" {
   family                   = "wordpress"
   network_mode             = "awsvpc"
@@ -23,8 +25,18 @@ resource "aws_ecs_task_definition" "wordpress" {
     secrets = [
       { name = "WORDPRESS_DB_PASSWORD", valueFrom = var.db_password_secret_arn }
     ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+        "awslogs-region"        = "ap-south-1"
+        "awslogs-stream-prefix" = "wordpress"
+      }
+    }
   }])
 }
+
+# ecs service for wordpress
 
 resource "aws_ecs_service" "wordpress" {
   name            = "wordpress-service"
@@ -35,6 +47,7 @@ resource "aws_ecs_service" "wordpress" {
   network_configuration {
     subnets         = var.private_subnets
     security_groups = [var.ecs_sg_id]
+    assign_public_ip = false
   }
   load_balancer {
     target_group_arn = var.wordpress_target_group_arn
@@ -43,6 +56,12 @@ resource "aws_ecs_service" "wordpress" {
   }
 }
 
+# Ensure service redeploys if task definition changes
+
+depends_on = [aws_iam_role_policy_attachment.ecs_execution]
+
+# task definition for microservice 
+
 resource "aws_ecs_task_definition" "microservice" {
   family                   = "microservice"
   network_mode             = "awsvpc"
@@ -50,13 +69,31 @@ resource "aws_ecs_task_definition" "microservice" {
   cpu                      = "256"
   memory                   = "512"
   execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn = aws_iam_role.ecs_task.arn
   container_definitions = jsonencode([{
     name  = "microservice"
     image = "${var.ecr_repository_url}:latest"
     essential = true
     portMappings = [{ containerPort = 3000, hostPort = 3000 }]
+    healthCheck = {
+      command = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval = 30
+      timeout = 5
+      retries = 3
+      startPeriod = 60
+    }
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+        "awslogs-region"        = "ap-south-1"
+        "awslogs-stream-prefix" = "microservice"
+      }
+    }
   }])
 }
+
+# ECS service for Microservice
 
 resource "aws_ecs_service" "microservice" {
   name            = "microservice-service"
@@ -67,13 +104,17 @@ resource "aws_ecs_service" "microservice" {
   network_configuration {
     subnets         = var.private_subnets
     security_groups = [var.ecs_sg_id]
+    assign_public_ip = false
   }
   load_balancer {
     target_group_arn = var.microservice_target_group_arn
     container_name   = "microservice"
     container_port   = 3000
   }
+  depends_on = [aws_iam_role_policy_attachment.ecs_execution]
 }
+
+# autoscaling for wordpress
 
 resource "aws_appautoscaling_target" "wordpress" {
   max_capacity       = 3
@@ -97,6 +138,32 @@ resource "aws_appautoscaling_policy" "wordpress_cpu" {
   }
 }
 
+# Auto scaling for Microservice
+
+resource "aws_appautoscaling_target" "microservice" {
+  max_capacity       = 3
+  min_capacity       = 1
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.microservice.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "microservice_cpu" {
+  name               = "microservice-cpu"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.microservice.resource_id
+  scalable_dimension = aws_appautoscaling_target.microservice.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.microservice.service_namespace
+  target_tracking_scaling_policy_configuration {
+    target_value       = 70
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+  }
+}
+
+# i am role for ecs execution
+
 resource "aws_iam_role" "ecs_execution" {
   name = "ecs_execution_role"
   assume_role_policy = jsonencode({
@@ -111,10 +178,42 @@ resource "aws_iam_role" "ecs_execution" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_execution" {
-  role       = aws_iam_role.ecs_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+resource "aws_iam_role_policy" "ecs_execution_policy" {
+  name = "ecs_execution_policy"
+  role = aws_iam_role.ecs_execution.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = var.db_password_secret_arn
+      }
+    ]
+  })
 }
+
 
 resource "aws_iam_role" "ecs_task" {
   name = "ecs_task_role"
@@ -166,7 +265,7 @@ resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
   dimensions = {
     ClusterName = aws_ecs_cluster.main.name
   }
-  alarm_actions = [] # Add SNS topic ARN if needed
+  alarm_actions = [] 
 }
 
 # CloudWatch Alarm for ECS Memory Utilization
