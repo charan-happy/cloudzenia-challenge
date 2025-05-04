@@ -73,10 +73,13 @@ jobs:
           TABLE_EXISTS=$(aws dynamodb describe-table --table-name cloudzenia-terraform-locks --region ${{ secrets.AWS_REGION }} --query "Table.TableName" --output text 2>/dev/null || echo "")
           if [ -n "$TABLE_EXISTS" ]; then
             echo "DynamoDB Table cloudzenia-terraform-locks already exists"
-            terraform import aws_dynamodb_table.locks cloudzenia-terraform-locks || echo "Failed to import DynamoDB table, proceeding..."
+            terraform import aws_dynamodb_table.terraform_locks cloudzenia-terraform-locks || echo "Failed to import DynamoDB table, proceeding..."
           else
             echo "DynamoDB Table cloudzenia-terraform-locks does not exist, will create it."
           fi
+
+          # Refresh Terraform state to ensure consistency after imports
+          terraform refresh || echo "Failed to refresh Terraform state, proceeding..."
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
 
